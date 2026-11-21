@@ -8,8 +8,16 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / "artifacts"
 st.set_page_config(page_title="Legal Tagger Monitor", page_icon="⚖️", layout="wide")
-st.title("⚖️ Quantized Legal Tagger Monitor")
-st.caption("Measured held-out quality and CPU efficiency. All values come from local run artifacts.")
+st.markdown("""<style>
+    .block-container {max-width: 1440px; padding-top: 2rem; padding-bottom: 3rem;}
+    h1 {letter-spacing: -0.035em; color: #102a43;}
+    h2, h3 {color: #16324f; letter-spacing: -0.02em;}
+    [data-testid="stMetric"] {background: #f2f6fa; border: 1px solid #d9e2ec;
+      padding: 1rem 1.1rem; border-radius: 12px;}
+    div[data-testid="stCaptionContainer"] {color: #52677d;}
+</style>""", unsafe_allow_html=True)
+st.title("Quantized Legal Tagger Monitor")
+st.caption("Experiment dashboard · LEDGAR contract clause classification · measured local results")
 
 
 def read_json(path: Path):
@@ -28,12 +36,14 @@ def read_csv(path: Path):
 
 def discover_runs():
     found = {}
-    if ARTIFACTS.exists():
-        for path in ARTIFACTS.rglob("benchmark.json"):
-            run_id = str(path.parent.relative_to(ARTIFACTS)) or "phase1"
-            report = read_json(path)
-            if report and report.get("results"):
-                found[run_id] = (path.parent, report)
+    for root in (ARTIFACTS, ROOT / "reports" / "demo"):
+        if root.exists():
+            for path in root.rglob("benchmark.json"):
+                relative = str(path.parent.relative_to(root))
+                run_id = relative if relative != "." else ("demo" if root.name == "demo" else "phase1")
+                report = read_json(path)
+                if report and report.get("results"):
+                    found[run_id] = (path.parent, report)
     return found
 
 
@@ -55,6 +65,13 @@ base = models.get("original")
 compressed = [item for item in results if item["name"] != "original"]
 best = min(compressed, key=lambda item: item["size_bytes"]) if compressed else None
 
+with st.expander("Project overview and experiment status", expanded=True):
+    st.write("Compare a fine-tuned GPT-2 classifier with CPU dynamic and static INT8 projection quantization. This dashboard loads **precomputed experiment artifacts**; opening it does not download data, train a model, or run inference.")
+    info = benchmark.get("hardware", {})
+    st.write(f"**Dataset:** LEDGAR · 100 labels · held-out test evaluation (300 examples); benchmark uses {benchmark.get('benchmark_config', {}).get('distinct_inputs', 'not recorded')} distinct test inputs.")
+    st.write(f"**Model:** openai-community/gpt2 fine-tuned for legal clause labels. **Runtime:** {info.get('platform', 'not recorded')} · Python {info.get('python', 'not recorded')} · PyTorch {info.get('torch', 'not recorded')} · {info.get('device', 'not recorded')}.")
+    st.success("Phase 2 reports loaded" if base and all(name in models for name in ("dynamic", "static")) else "Partial experiment: one or more model reports are unavailable")
+
 st.subheader("Efficiency summary")
 cards = st.columns(4)
 cards[0].metric("Original size", f"{base['size_bytes'] / 1024**2:.1f} MiB" if base else "Not measured")
@@ -72,11 +89,14 @@ if best and best.get("speedup"):
     st.caption(f"Measured speed change for {best['name']}: {label}. Accuracy change: {best.get('accuracy_change_percentage_points', 0):+.2f} percentage points.")
 
 st.subheader("Model comparison")
+st.caption("Quality scores below come from the 50-input benchmark subset. The full 300-example held-out evaluation is shown in the evaluation section.")
 table = []
 for item in results:
     table.append({"Model": item["name"], "Quantization": item.get("quantization", "FP32 baseline" if item["name"] == "original" else item["name"]),
                   "Size (MiB)": round(item["size_bytes"] / 1024**2, 2), "Accuracy": item.get("accuracy"),
-                  "Macro F1": item.get("macro_f1"), "Weighted F1": item.get("weighted_f1"),
+                  "Macro precision": item.get("macro_precision"), "Macro recall": item.get("macro_recall"),
+                  "Macro F1": item.get("macro_f1"), "Weighted precision": item.get("weighted_precision"),
+                  "Weighted recall": item.get("weighted_recall"), "Weighted F1": item.get("weighted_f1"),
                   "Mean latency (ms)": round(item["mean_latency_seconds"] * 1000, 2),
                   "Median (ms)": round(item["median_latency_seconds"] * 1000, 2),
                   "P95 (ms)": round(item["p95_latency_seconds"] * 1000, 2),
@@ -156,3 +176,16 @@ st.download_button("Download benchmark JSON", (run_dir / "benchmark.json").read_
 bench_csv = run_dir / "benchmark.csv"
 if bench_csv.exists():
     st.download_button("Download benchmark CSV", bench_csv.read_bytes(), file_name=f"{run_id}_benchmark.csv", mime="text/csv")
+
+summary = [{"model": item["name"], "size_bytes": item.get("size_bytes"), "accuracy": item.get("accuracy"),
+            "macro_precision": item.get("macro_precision"), "macro_recall": item.get("macro_recall"),
+            "macro_f1": item.get("macro_f1"), "weighted_precision": item.get("weighted_precision"),
+            "weighted_recall": item.get("weighted_recall"), "weighted_f1": item.get("weighted_f1"),
+            "mean_latency_seconds": item.get("mean_latency_seconds"), "throughput_per_second": item.get("throughput_per_second"),
+            "size_reduction_percent": item.get("size_reduction_percent"), "speedup": item.get("speedup")} for item in results]
+st.download_button("Download model comparison JSON", json.dumps(summary, indent=2), file_name=f"{run_id}_model_comparison.json", mime="application/json")
+
+with st.expander("How to read this experiment"):
+    st.markdown("""**Quantization** stores selected model weights with fewer bits to reduce model size. INT8 uses 8-bit integer representations. **Dynamic quantization** quantizes weights ahead of time and handles activations during inference. **Static quantization** also calibrates activation ranges using training examples. In this implementation only transformer projection layers are quantized; embeddings, normalization, attention/KV cache operations, and the tied output head stay in floating point.
+
+The measurements show this run's storage, latency, and held-out quality trade-offs on one CPU. They do not establish universal speed gains or production suitability. Calibration and test data are kept separate. See the final report for methodology and limitations.""")

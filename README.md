@@ -112,6 +112,14 @@ The original development experiment remains under the root `artifacts/` and `dat
 
 ## Dashboard and artifacts
 
+For a quick evaluator demo with saved Phase 2 results (no dataset download or model training):
+
+```bash
+python -m app.cli demo
+```
+
+The demo validates the required precomputed reports and starts the Streamlit dashboard. A compact copy of actual benchmark/evaluation reports and prediction CSVs is included in `reports/demo/`; model weights and data are intentionally excluded from Git.
+
 ```bash
 python -m app.cli dashboard
 ```
@@ -136,6 +144,17 @@ pytest -q
 ```
 
 Unit tests use synthetic data and tiny GPT-2 configurations; they do not download LEDGAR or train the full model. The dashboard can be smoke-tested with Streamlit's `AppTest`.
+
+## Submission materials
+
+- [Final experiment report](reports/final_project_report.md)
+- [Reproducibility guide](reports/reproducibility_guide.md)
+- [Phase 3 project audit](artifacts/phase3/project_audit.md)
+- Programmatically generated SVG charts in `reports/figures/` (`python -m app.reporting` recreates them from `artifacts/phase2/benchmark.json`).
+
+![Held-out accuracy on the benchmark subset](reports/figures/accuracy_comparison.svg)
+
+![Model size and accuracy trade-off](reports/figures/efficiency_tradeoff.svg)
 
 ## CLI reference
 

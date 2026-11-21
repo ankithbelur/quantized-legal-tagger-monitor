@@ -26,6 +26,7 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("static-quantize", help="calibrate and apply static CPU INT8 projection quantization")
     p.add_argument("--calibration-limit", type=int, default=128)
     sub.add_parser("dashboard", help="launch the Streamlit dashboard")
+    sub.add_parser("demo", help="launch dashboard using the precomputed Phase 2 results")
     p = sub.add_parser("pipeline", help="prepare, train, evaluate, quantize and benchmark")
     p.add_argument("--limit", type=int, default=3000, help="prepared total cap; allocated 80/10/10 across official splits")
     p.add_argument("--epochs", type=int, default=2)
@@ -63,6 +64,18 @@ def main(argv: list[str] | None = None) -> None:
         from app.core import quantize_static
         print(json.dumps(quantize_static(args.calibration_limit),indent=2))
     elif args.command == "dashboard":
+        import subprocess, sys
+        subprocess.run([sys.executable,"-m","streamlit","run","app/dashboard.py"],check=True)
+    elif args.command == "demo":
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        phase2 = root / "artifacts" / "phase2"
+        bundled = root / "reports" / "demo"
+        candidates = [phase2, bundled]
+        complete = lambda folder: all((folder / name).is_file() for name in ["benchmark.json", *[f"evaluation_{model}_test.json" for model in ("original", "dynamic", "static")]])
+        if not any(complete(folder) for folder in candidates):
+            missing = [str((bundled / name).relative_to(root)) for name in ["benchmark.json", *[f"evaluation_{model}_test.json" for model in ("original", "dynamic", "static")]] if not (bundled / name).is_file()]
+            parser.error("Precomputed demo artifacts are missing: " + ", ".join(missing) + ". Restore reports/demo or run the documented pipeline.")
         import subprocess, sys
         subprocess.run([sys.executable,"-m","streamlit","run","app/dashboard.py"],check=True)
     elif args.command == "pipeline":

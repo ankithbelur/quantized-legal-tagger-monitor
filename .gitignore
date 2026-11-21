@@ -10,6 +10,11 @@ __pycache__/
 # Local data
 data/
 artifacts/
+!artifacts/
+artifacts/*
+!artifacts/phase3/
+artifacts/phase3/*
+!artifacts/phase3/project_audit.md
 *.db
 *.safetensors
 *.pt
