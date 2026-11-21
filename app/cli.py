@@ -1,7 +1,6 @@
 """Command-line entry point for the complete local pipeline."""
 import argparse
 import json
-from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -9,21 +8,34 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("hello", help="check that everything is wired up")
     sub.add_parser("health", help="check dependencies and local hardware")
-    p = sub.add_parser("prepare", help="download and prepare LEDGAR")
-    p.add_argument("--limit", type=int, default=5000); p.add_argument("--force", action="store_true")
+    p = sub.add_parser("prepare", help="download and prepare official LEDGAR splits")
+    p.add_argument("--limit", type=int, default=3000, help="total cap; allocated 80/10/10 across official splits")
+    p.add_argument("--force", action="store_true")
     p = sub.add_parser("train", help="fine-tune GPT-2")
-    p.add_argument("--limit", type=int, default=0); p.add_argument("--epochs", type=int, default=1); p.add_argument("--batch-size", type=int, default=2); p.add_argument("--max-length", type=int, default=256); p.add_argument("--model", default="openai-community/gpt2"); p.add_argument("--device", default="auto"); p.add_argument("--no-resume", action="store_true")
+    p.add_argument("--limit", type=int, default=0, help="stratified train cap; 0 uses prepared train split")
+    p.add_argument("--epochs", type=int, default=2); p.add_argument("--batch-size", type=int, default=4)
+    p.add_argument("--max-length", type=int, default=160); p.add_argument("--model", default="openai-community/gpt2")
+    p.add_argument("--device", default="auto"); p.add_argument("--no-resume", action="store_true")
     p = sub.add_parser("evaluate", help="evaluate held-out examples")
-    p.add_argument("--model-path", default="artifacts/original"); p.add_argument("--split", default="test", choices=["train","validation","test"]); p.add_argument("--limit", type=int, default=0); p.add_argument("--device", default="auto")
+    p.add_argument("--model-path", default=None); p.add_argument("--split", default="test", choices=["train","validation","test"]); p.add_argument("--limit", type=int, default=0); p.add_argument("--device", default="auto")
     sub.add_parser("quantize", help="apply CPU dynamic INT8 quantization")
     p = sub.add_parser("benchmark", help="measure local CPU latency and size")
-    p.add_argument("--limit", type=int, default=50); p.add_argument("--repeats", type=int, default=3)
-    sub.add_parser("static-quantize", help="report whether static quantization is supported")
+    p.add_argument("--limit", type=int, default=50); p.add_argument("--warmup", type=int, default=20)
+    p.add_argument("--iterations", type=int, default=100)
+    p.add_argument("--sessions", "--repeats", dest="sessions", type=int, default=3)
+    p = sub.add_parser("static-quantize", help="calibrate and apply static CPU INT8 projection quantization")
+    p.add_argument("--calibration-limit", type=int, default=128)
     sub.add_parser("dashboard", help="launch the Streamlit dashboard")
     p = sub.add_parser("pipeline", help="prepare, train, evaluate, quantize and benchmark")
-    p.add_argument("--limit", type=int, default=5000, help="prepared dataset cap; also training cap")
-    p.add_argument("--epochs", type=int, default=1)
+    p.add_argument("--limit", type=int, default=3000, help="prepared total cap; allocated 80/10/10 across official splits")
+    p.add_argument("--epochs", type=int, default=2)
     p.add_argument("--device", default="auto")
+    p.add_argument("--batch-size", type=int, default=4)
+    p.add_argument("--max-length", type=int, default=160)
+    p.add_argument("--benchmark-inputs", type=int, default=50)
+    p.add_argument("--warmup", type=int, default=20)
+    p.add_argument("--iterations", type=int, default=100)
+    p.add_argument("--sessions", type=int, default=3)
     args = parser.parse_args(argv)
     if args.command == "hello":
         print("Quantized Legal Tagger Monitor is ready. Open README.md for your milestones.")
@@ -46,21 +58,25 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(quantize_dynamic(),indent=2))
     elif args.command == "benchmark":
         from app.core import benchmark
-        print(json.dumps(benchmark(limit=args.limit,repeats=args.repeats),indent=2))
+        print(json.dumps(benchmark(limit=args.limit,warmup=args.warmup,iterations=args.iterations,sessions=args.sessions),indent=2))
     elif args.command == "static-quantize":
-        result={"supported":False,"status":"unsupported","reason":"GPT-2 uses custom Conv1D projections and generation with KV-cache; the available PyTorch eager static quantization workflow cannot convert these modules into a complete executable static INT8 generation model. No static model or metrics were produced."}
-        Path("artifacts").mkdir(exist_ok=True); Path("artifacts/static_quantization.json").write_text(json.dumps(result,indent=2)+"\n")
-        print(json.dumps(result,indent=2))
+        from app.core import quantize_static
+        print(json.dumps(quantize_static(args.calibration_limit),indent=2))
     elif args.command == "dashboard":
         import subprocess, sys
         subprocess.run([sys.executable,"-m","streamlit","run","app/dashboard.py"],check=True)
     elif args.command == "pipeline":
-        from app.core import prepare_dataset, train, evaluate, quantize_dynamic, benchmark
-        print("[1/5] Preparing dataset"); print(json.dumps(prepare_dataset(args.limit),indent=2))
-        print("[2/5] Fine-tuning model"); print(json.dumps(train(limit=args.limit,epochs=args.epochs,device=args.device),indent=2))
-        print("[3/5] Evaluating held-out test split"); print(json.dumps(evaluate(),indent=2))
-        print("[4/5] Applying dynamic quantization"); print(json.dumps(quantize_dynamic(),indent=2))
-        print("[5/5] Benchmarking"); print(json.dumps(benchmark(),indent=2))
+        from app import core
+        prepare_dataset, train, evaluate = core.prepare_dataset, core.train, core.evaluate
+        quantize_dynamic, quantize_static, benchmark = core.quantize_dynamic, core.quantize_static, core.benchmark
+        print("[1/8] Preparing dataset"); print(json.dumps(prepare_dataset(args.limit),indent=2))
+        print("[2/8] Fine-tuning model"); print(json.dumps(train(limit=args.limit,epochs=args.epochs,batch_size=args.batch_size,max_length=args.max_length,device=args.device),indent=2))
+        print("[3/8] Evaluating original on held-out test split"); print(json.dumps(evaluate(),indent=2))
+        print("[4/8] Applying dynamic quantization"); print(json.dumps(quantize_dynamic(),indent=2))
+        print("[5/8] Evaluating dynamic model"); print(json.dumps(evaluate(core.MODEL_DIR / "dynamic"),indent=2))
+        print("[6/8] Calibrating and applying static quantization"); print(json.dumps(quantize_static(),indent=2))
+        print("[7/8] Evaluating static model"); print(json.dumps(evaluate(core.MODEL_DIR / "static"),indent=2))
+        print("[8/8] Benchmarking all executable models"); print(json.dumps(benchmark(limit=args.benchmark_inputs,warmup=args.warmup,iterations=args.iterations,sessions=args.sessions),indent=2))
 
 
 if __name__ == "__main__":
