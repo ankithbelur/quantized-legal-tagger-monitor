@@ -1,0 +1,16 @@
+# Secrets: never commit your real settings
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local data
+data/
+artifacts/
+*.db
+*.safetensors
+*.pt
+*.bin
