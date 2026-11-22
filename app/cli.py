@@ -3,6 +3,11 @@ import argparse
 import json
 
 
+def _print_json(value) -> None:
+    """Print structured command output consistently for interactive and scripted use."""
+    print(json.dumps(value, indent=2))
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="quantized-legal-tagger-monitor", description="Legal aid workers use this to evaluate the size and inference speed of a quantized legal clause tagger, ensuring efficient document processing on local systems.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -47,22 +52,22 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps({"python":platform.python_version(),"platform":platform.platform(),"torch":torch.__version__,"device":str(_device(torch))},indent=2))
     elif args.command == "prepare":
         from app.core import prepare_dataset
-        print(json.dumps(prepare_dataset(args.limit, force=args.force),indent=2))
+        _print_json(prepare_dataset(args.limit, force=args.force))
     elif args.command == "train":
         from app.core import train
-        print(json.dumps(train(args.limit,args.epochs,args.batch_size,args.max_length,args.model,args.device,resume=not args.no_resume),indent=2))
+        _print_json(train(args.limit,args.epochs,args.batch_size,args.max_length,args.model,args.device,resume=not args.no_resume))
     elif args.command == "evaluate":
         from app.core import evaluate
-        print(json.dumps(evaluate(args.model_path,args.split,args.device,args.limit),indent=2))
+        _print_json(evaluate(args.model_path,args.split,args.device,args.limit))
     elif args.command == "quantize":
         from app.core import quantize_dynamic
-        print(json.dumps(quantize_dynamic(),indent=2))
+        _print_json(quantize_dynamic())
     elif args.command == "benchmark":
         from app.core import benchmark
-        print(json.dumps(benchmark(limit=args.limit,warmup=args.warmup,iterations=args.iterations,sessions=args.sessions),indent=2))
+        _print_json(benchmark(limit=args.limit,warmup=args.warmup,iterations=args.iterations,sessions=args.sessions))
     elif args.command == "static-quantize":
         from app.core import quantize_static
-        print(json.dumps(quantize_static(args.calibration_limit),indent=2))
+        _print_json(quantize_static(args.calibration_limit))
     elif args.command == "dashboard":
         import subprocess, sys
         subprocess.run([sys.executable,"-m","streamlit","run","app/dashboard.py"],check=True)
@@ -82,14 +87,14 @@ def main(argv: list[str] | None = None) -> None:
         from app import core
         prepare_dataset, train, evaluate = core.prepare_dataset, core.train, core.evaluate
         quantize_dynamic, quantize_static, benchmark = core.quantize_dynamic, core.quantize_static, core.benchmark
-        print("[1/8] Preparing dataset"); print(json.dumps(prepare_dataset(args.limit),indent=2))
-        print("[2/8] Fine-tuning model"); print(json.dumps(train(limit=args.limit,epochs=args.epochs,batch_size=args.batch_size,max_length=args.max_length,device=args.device),indent=2))
-        print("[3/8] Evaluating original on held-out test split"); print(json.dumps(evaluate(),indent=2))
-        print("[4/8] Applying dynamic quantization"); print(json.dumps(quantize_dynamic(),indent=2))
-        print("[5/8] Evaluating dynamic model"); print(json.dumps(evaluate(core.MODEL_DIR / "dynamic"),indent=2))
-        print("[6/8] Calibrating and applying static quantization"); print(json.dumps(quantize_static(),indent=2))
-        print("[7/8] Evaluating static model"); print(json.dumps(evaluate(core.MODEL_DIR / "static"),indent=2))
-        print("[8/8] Benchmarking all executable models"); print(json.dumps(benchmark(limit=args.benchmark_inputs,warmup=args.warmup,iterations=args.iterations,sessions=args.sessions),indent=2))
+        print("[1/8] Preparing dataset"); _print_json(prepare_dataset(args.limit))
+        print("[2/8] Fine-tuning model"); _print_json(train(limit=args.limit,epochs=args.epochs,batch_size=args.batch_size,max_length=args.max_length,device=args.device))
+        print("[3/8] Evaluating original on held-out test split"); _print_json(evaluate())
+        print("[4/8] Applying dynamic quantization"); _print_json(quantize_dynamic())
+        print("[5/8] Evaluating dynamic model"); _print_json(evaluate(core.MODEL_DIR / "dynamic"))
+        print("[6/8] Calibrating and applying static quantization"); _print_json(quantize_static())
+        print("[7/8] Evaluating static model"); _print_json(evaluate(core.MODEL_DIR / "static"))
+        print("[8/8] Benchmarking all executable models"); _print_json(benchmark(limit=args.benchmark_inputs,warmup=args.warmup,iterations=args.iterations,sessions=args.sessions))
 
 
 if __name__ == "__main__":

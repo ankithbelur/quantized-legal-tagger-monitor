@@ -19,6 +19,12 @@ flowchart LR
     I --> J
 ```
 
+The repository began from a small Python application scaffold. The generic package layout, `.env.example`, initial `hello` command, CI workflow, and optional OpenAI-compatible chat helper in `app/llm.py` are scaffold-style infrastructure. The unused JSON key-value store has been removed. The LEDGAR preparation, GPT-2 training/evaluation, quantization, benchmark, reporting, and monitoring paths are project-specific additions built on documented Hugging Face Transformers, PyTorch, Streamlit, and scikit-learn APIs. This project does not claim that every line or underlying library implementation was written from scratch.
+
+### Optional chat helper (`app/llm.py`)
+
+`app/llm.py` is a small, optional OpenAI-compatible `/chat/completions` client, defaulting to a local Ollama endpoint. It is not called by the legal-tagging pipeline, does not load or score GPT-2, and is not required for training, evaluation, the dashboard, or the demo. It remains available for a separate conversational integration; no second classifier/inference implementation was added. Configure `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in the environment or local `.env` file to call a compatible service. Never commit real credentials.
+
 The dataset is [LexGLUE LEDGAR](https://huggingface.co/datasets/coastalcph/lex_glue), a 100-class contract-provision classification dataset. GPT-2's `Conv1D` is a linear projection with transposed weight storage; Phase 2 verifies a transpose conversion against the original model before quantizing it ([Transformers implementation](https://github.com/huggingface/transformers/blob/main/src/transformers/pytorch_utils.py)). PyTorch's dynamic API supports weights-only quantization for selected modules ([PyTorch documentation](https://docs.pytorch.org/docs/stable/generated/torch.ao.quantization.quantize_dynamic.html)).
 
 ## Setup
